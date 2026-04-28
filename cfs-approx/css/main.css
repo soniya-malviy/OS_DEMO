@@ -518,3 +518,13 @@ input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.2); }
   .formula-compare { grid-template-columns: 1fr; }
   .chart-2col, .chart-3col { grid-template-columns: 1fr; }
 }
+
+/* ── Code Snippet ───────────────────────────────────── */
+.code-snippet {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 16px;
+  font-size: 11px;
+  overflow-x: auto;
+}

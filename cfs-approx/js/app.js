@@ -141,6 +141,94 @@ const Approx = (() => {
  
   return { runSimulation, kernelEWMA, approxBitShift, FIXED_1, EXP_1 };
 })();
+
+const EEVDF = (() => {
+  const LATENCY = 4e6;    // 4ms target latency (ns)
+  const PERIOD  = 1e8;     // 100ms period
+
+  function calcEligibility(weight, load) {
+    const lat = LATENCY / 1000;
+    const per = PERIOD / 1000;
+    const latency = Math.min(lat, per / Math.sqrt(weight / 1024));
+    return latency;
+  }
+
+  function pickNextEEVDF(tasks, now) {
+    let min = null;
+    let minVe = Infinity;
+    for (const t of tasks) {
+      if (!t.eligible || t.start > now) continue;
+      const ve = t.lag + (now - t.start) / t.eligibility;
+      if (ve < minVe) { minVe = ve; min = t; }
+    }
+    return min;
+  }
+
+  function runEEVDFSimulation() {
+    const T = 500;
+    const N = 50;
+    const cfsLatency = [];
+    const eevdfLatency = [];
+    const cfsWait = [];
+    const eevdfWait = [];
+    let now = 0;
+    let tskId = 0;
+
+    class Task {
+      constructor() {
+        this.id = tskId++;
+        this.weight = 256 + Math.floor(Math.random() * 2048);
+        this.period = 50 + Math.floor(Math.random() * 200);
+        this.burst = 2 + Math.floor(Math.random() * 8);
+        this.start = 0;
+        this.wait = 0;
+      }
+      get eligibility() { return calcEligibility(this.weight, 1); }
+    }
+
+    const tasks = [];
+    for (let i = 0; i < N; i++) tasks.push(new Task());
+
+    const cfsQueue = [...tasks].sort((a,b) => a.weight - b.weight);
+    const eevdfQueue = tasks.map(t => ({...t, lag: 0, start: 0, eligible: false}));
+
+    for (now = 0; now < T; now++) {
+      if (Math.random() < 0.1) { const t = new Task(); eevdfQueue.push({...t, lag: 0, start: now, eligible: true}); cfsQueue.push(t); }
+
+      let waitCFS = 0, waitEEVDF = 0;
+      if (cfsQueue.length > 0) {
+        const t = cfsQueue[0];
+        waitCFS = now - t.start;
+        t.start = now + t.burst;
+        if (t.start < T) cfsQueue[0] = t;
+      }
+      if (eevdfQueue.length > 0) {
+        const eligible = eevdfQueue.filter(t => t.eligible && t.start <= now);
+        if (eligible.length > 0) {
+          const t = eligible.sort((a,b) => (a.lag + (now-a.start)/a.eligibility) - (b.lag + (now-b.start)/b.eligibility))[0];
+          waitEEVDF = now - t.start;
+          t.start = now + t.burst;
+          t.lag += now - t.start + t.burst;
+        }
+      }
+
+      cfsWait.push(Math.max(0, waitCFS));
+      eevdfWait.push(Math.max(0, waitEEVDF));
+      cfsLatency.push(cfsWait[now] || 0);
+      eevdfLatency.push(eevdfWait[now] || 0);
+    }
+
+    return {
+      T,
+      cfsLatency,
+      eevdfLatency,
+      avgCFS: cfsWait.reduce((s,v)=>s+v,0)/T,
+      avgEEVDF: eevdfWait.reduce((s,v)=>s+v,0)/T,
+    };
+  }
+
+  return { runEEVDFSimulation };
+})();
  
 const Charts = (() => {
   const PALETTE = {
@@ -148,6 +236,8 @@ const Charts = (() => {
     bs     : '#F97316',
     lut    : '#10B981',
     poly   : '#A855F7',
+    eevdf  : '#8B5CF6',
+    cfs    : '#6B7280',
     active : '#94A3B8',
     err    : '#EF4444',
     bound  : '#7C3AED',
@@ -318,17 +408,46 @@ const Charts = (() => {
           y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#94A3B8', callback: v => v.toFixed(3) }, grid: { color: PALETTE.grid } }
         }
       }
+});
+  }
+
+  function buildEEVDFChart(data) {
+    destroy('chart-eevdf-latency');
+    const el = document.getElementById('chart-eevdf-latency');
+    if (!el) return;
+    const ctx = el.getContext('2d');
+    const labels = Array.from({ length: data.T }, (_, i) => i);
+
+    instances['chart-eevdf-latency'] = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          { label: 'CFS', data: data.cfsLatency, borderColor: PALETTE.cfs, borderWidth: 1.5, pointRadius: 0, fill: false, tension: 0.3 },
+          { label: 'EEVDF', data: data.eevdfLatency, borderColor: PALETTE.eevdf, borderWidth: 2, pointRadius: 0, fill: false, tension: 0.3 },
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { maxTicksLimit: 8, font: { size: 10, family: 'JetBrains Mono' }, color: '#94A3B8' }, grid: { color: PALETTE.grid }, border: { color: 'transparent' } },
+          y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#94A3B8' }, grid: { color: PALETTE.grid }, border: { color: 'transparent' }, title: { display: true, text: 'wait time', color: '#64748B' } }
+        }
+      }
     });
   }
- 
-  function buildAll(data) {
+
+  function buildAll(data, eevdfData) {
     buildComparisonChart(data);
     buildErrorChart(data);
     buildPctChart(data);
     buildCyclesChart();
     buildEpsChart(data);
+    if (eevdfData) buildEEVDFChart(eevdfData);
   }
- 
+
   return { buildAll, PALETTE };
 })();
 
@@ -338,7 +457,8 @@ document.addEventListener('DOMContentLoaded', () => {
   
   function updateUI() {
     const data = Approx.runSimulation(config);
-    Charts.buildAll(data);
+    const eevdfData = EEVDF.runEEVDFSimulation();
+    Charts.buildAll(data, eevdfData);
     
     // Update live stats
     document.getElementById('stat-avg-bs').textContent = data.stats.avgErrBS + '%';
