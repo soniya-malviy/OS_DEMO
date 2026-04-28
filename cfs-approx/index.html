@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CFS Approximate Computing | Research</title>
+    <link rel="stylesheet" href="css/main.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-shell">
+        <header>
+            <div class="header-left">
+                <div class="logo-mark">Σ</div>
+                <div class="header-title">CFS APPROXIMATE COMPUTING</div>
+                <div class="header-sub">kernel/sched/loadavg.c — Phase 2</div>
+            </div>
+            <div class="header-badges">
+                <div class="badge badge-blue">O1 ε-BOUNDS</div>
+                <div class="badge badge-green">O2 3 VARIANTS</div>
+                <div class="badge badge-orange">Q11 FIXED-POINT</div>
+            </div>
+        </header>
+
+        <div class="context-bar">
+            <div class="context-item">
+                <div class="context-label">Kernel Reference</div>
+                <div class="context-value"><code>avenrun[]</code></div>
+            </div>
+            <div class="context-item">
+                <div class="context-label">Exact Formula</div>
+                <div class="context-value">load × EXP_1 + active × (FIXED_1 − EXP_1)</div>
+            </div>
+            <div class="context-item">
+                <div class="context-label">Proposed (Bit-Shift)</div>
+                <div class="context-value">(load − (load >> k)) + (active >> k)</div>
+            </div>
+            <div class="context-item">
+                <div class="context-label">Theoretical Gain</div>
+                <div class="context-value">IMUL 3cyc → SAR 1cyc (3× Speedup)</div>
+            </div>
+        </div>
+
+        <main>
+            <aside class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Navigation</div>
+                    <nav>
+                        <a href="#" class="nav-link active" data-target="overview">
+                            <span class="nav-dot" style="background: var(--blue)"></span> Overview
+                        </a>
+                        <a href="#" class="nav-link" data-target="formulas">
+                            <span class="nav-dot" style="background: var(--orange)"></span> Formulas
+                        </a>
+                        <a href="#" class="nav-link" data-target="variants">
+                            <span class="nav-dot" style="background: var(--green)"></span> 3 Variants
+                        </a>
+                        <a href="#" class="nav-link" data-target="bounds">
+                            <span class="nav-dot" style="background: var(--purple)"></span> ε Bounds
+                        </a>
+                        <a href="#" class="nav-link" data-target="cycles">
+                            <span class="nav-dot" style="background: var(--red)"></span> CPU Cycles
+                        </a>
+                        <a href="#" class="nav-link" data-target="code">
+                            <span class="nav-dot" style="background: var(--amber)"></span> Kernel C Code
+                        </a>
+                    </nav>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Parameters</div>
+                    <div class="ctrl-block">
+                        <div class="ctrl-item">
+                            <div class="ctrl-label">Bit-shift k <span class="ctrl-val" id="val-k">4</span></div>
+                            <input type="range" id="input-k" min="1" max="8" value="4">
+                        </div>
+                        <div class="ctrl-item">
+                            <div class="ctrl-label">LUT Entries N <span class="ctrl-val" id="val-n">256</span></div>
+                            <input type="range" id="input-lutN" min="64" max="1024" step="64" value="256">
+                        </div>
+                        <div class="ctrl-item">
+                            <div class="ctrl-label">Poly Bits m <span class="ctrl-val" id="val-m">15</span></div>
+                            <input type="range" id="input-polyM" min="8" max="24" value="15">
+                        </div>
+                        <div class="ctrl-item">
+                            <div class="ctrl-label">Ticks T <span class="ctrl-val" id="val-t">300</span></div>
+                            <input type="range" id="input-T" min="100" max="1000" step="50" value="300">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sidebar-section">
+                    <div class="sidebar-heading">Live Stats</div>
+                    <div class="metrics-strip" style="grid-template-columns: 1fr; gap: 8px;">
+                        <div class="metric-tile info">
+                            <div class="metric-label">Avg Err (BS)</div>
+                            <div class="metric-value" id="stat-avg-bs">0.000%</div>
+                        </div>
+                        <div class="metric-tile good">
+                            <div class="metric-label">Avg Err (LUT)</div>
+                            <div class="metric-value" id="stat-avg-lut">0.000%</div>
+                        </div>
+                        <div class="metric-tile warn">
+                            <div class="metric-label">Avg Err (Poly)</div>
+                            <div class="metric-value" id="stat-avg-poly">0.000%</div>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+
+            <section class="content">
+                <!-- Overview Section -->
+                <div id="section-overview" class="section visible">
+                    <div class="section-header">
+                        <h1 class="section-title">Approximate Computing in CFS</h1>
+                        <p class="section-desc">The Linux CFS scheduler calls calc_load() every 5 seconds to update system load averages. This research replaces the 3-cycle IMUL with 1-cycle approximations to reduce scheduler overhead on high-core-count servers.</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">Load-Average Pipeline</div>
+                        <div class="pipeline">
+                            <div class="pipe-node">
+                                <div class="pipe-node-title">nr_active</div>
+                                <div class="pipe-node-sub">Task Count</div>
+                            </div>
+                            <div class="pipe-arrow">→</div>
+                            <div class="pipe-node kernel">
+                                <div class="pipe-node-title">calc_load()</div>
+                                <div class="pipe-node-sub">EWMA Update</div>
+                            </div>
+                            <div class="pipe-arrow">→</div>
+                            <div class="pipe-node highlight">
+                                <div class="pipe-node-title">Optimization</div>
+                                <div class="pipe-node-sub">Replace IMUL</div>
+                            </div>
+                            <div class="pipe-arrow">→</div>
+                            <div class="pipe-node">
+                                <div class="pipe-node-title">avenrun[]</div>
+                                <div class="pipe-node-sub">Load Metrics</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="chart-box">
+                        <div class="chart-box-title">Kernel vs Approximations (Load Trace)</div>
+                        <div class="chart-wrap" style="height: 300px;">
+                            <canvas id="chart-compare"></canvas>
+                        </div>
+                        <div class="legend-row">
+                            <div class="legend-item"><span class="legend-swatch" style="background: var(--blue)"></span> Kernel</div>
+                            <div class="legend-item"><span class="legend-swatch dashed" style="border-color: var(--orange)"></span> Bit-Shift</div>
+                            <div class="legend-item"><span class="legend-swatch dotted" style="border-color: var(--green)"></span> LUT</div>
+                            <div class="legend-item"><span class="legend-swatch dashed" style="border-color: var(--purple)"></span> Polynomial</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Formulas Section -->
+                <div id="section-formulas" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">Mathematical Models</h1>
+                        <p class="section-desc">Comparison of the exact kernel formula against the proposed bit-shift approximation.</p>
+                    </div>
+
+                    <div class="formula-compare">
+                        <div class="formula-box kernel-box">
+                            <div class="formula-tag tag-kernel">Existing: Linux Kernel</div>
+                            <div class="formula-eq">newload = load * EXP_1 + active * (FIXED_1 - EXP_1)</div>
+                            <div class="formula-note">EXP_1 = 1884 (Q11). 3-cycle IMUL latency.</div>
+                        </div>
+                        <div class="formula-box approx-box">
+                            <div class="formula-tag tag-bs">Proposed: Bit-Shift</div>
+                            <div class="formula-eq">newload = (load - (load >> k)) + (active >> k)</div>
+                            <div class="formula-note">k=4: α̂ = 0.9375. 1-cycle SAR latency.</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-2col">
+                        <div class="chart-box">
+                            <div class="chart-box-title">Absolute Error |Δ|</div>
+                            <div class="chart-wrap" style="height: 200px;">
+                                <canvas id="chart-error"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-box">
+                            <div class="chart-box-title">Percentage Error %</div>
+                            <div class="chart-wrap" style="height: 200px;">
+                                <canvas id="chart-pct"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Variants Section -->
+                <div id="section-variants" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">Three Approximation Strategies</h1>
+                        <p class="section-desc">Each variant offers a different trade-off between CPU cycles, memory, and error bounds.</p>
+                    </div>
+
+                    <div class="chart-3col">
+                        <div class="formula-box approx-box">
+                            <div class="formula-tag tag-bs">Bit-Shift</div>
+                            <div class="formula-note">O(1). Zero memory. Best speed. Systematic drift.</div>
+                        </div>
+                        <div class="formula-box lut-box">
+                            <div class="formula-tag tag-lut">LUT Lookup</div>
+                            <div class="formula-note">O(1) lookup. 2KB L1 cache. Exact α. Pure quantization error.</div>
+                        </div>
+                        <div class="formula-box poly-box">
+                            <div class="formula-tag tag-poly">Horner Poly</div>
+                            <div class="formula-note">O(d). Best for tunable precision. No systematic drift at high m.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Bounds Section -->
+                <div id="section-bounds" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">Formal ε Bounds (O1)</h1>
+                        <p class="section-desc">Closed-form proven upper bounds on error guaranteed for all inputs.</p>
+                    </div>
+
+                    <div class="card">
+                        <div class="proof-panel">
+                            <div class="proof-step step-derived">ε_∞ ≤ (|Δα|·M + δ) / (1−α)</div>
+                            <div class="proof-step step-bound">Derived from asymptotic telescoping sum convergence.</div>
+                        </div>
+                    </div>
+
+                    <div class="chart-box">
+                        <div class="chart-box-title">ε Bound vs Observed Error</div>
+                        <div class="chart-wrap" style="height: 250px;">
+                            <canvas id="chart-eps"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <table class="eps-table">
+                            <thead>
+                                <tr>
+                                    <th>Variant</th>
+                                    <th>|Δα|</th>
+                                    <th>δ (Quant)</th>
+                                    <th>Proven Bound ε_∞</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Bit-Shift</td>
+                                    <td>0.0176</td>
+                                    <td>0.00003</td>
+                                    <td id="bound-bs">0.0000</td>
+                                </tr>
+                                <tr>
+                                    <td>LUT</td>
+                                    <td>0.0000</td>
+                                    <td>0.0030</td>
+                                    <td id="bound-lut">0.0000</td>
+                                </tr>
+                                <tr>
+                                    <td>Polynomial</td>
+                                    <td>0.0001</td>
+                                    <td>0.00006</td>
+                                    <td id="bound-poly">0.0000</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Cycles Section -->
+                <div id="section-cycles" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">CPU Cycle Complexity</h1>
+                        <p class="section-desc">Instruction latencies based on Intel x86 architecture manuals.</p>
+                    </div>
+
+                    <div class="chart-box">
+                        <div class="chart-box-title">x86 Instruction Latency</div>
+                        <div class="chart-wrap" style="height: 250px;">
+                            <canvas id="chart-cycles"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <table class="compare-table">
+                            <thead>
+                                <tr>
+                                    <th>Instruction</th>
+                                    <th>Operation</th>
+                                    <th>Latency</th>
+                                    <th>Throughput</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><code>IMUL</code></td>
+                                    <td>64-bit Multiply</td>
+                                    <td>3 cycles</td>
+                                    <td>1/cycle</td>
+                                </tr>
+                                <tr>
+                                    <td><code>SAR</code></td>
+                                    <td>Shift Arithmetic Right</td>
+                                    <td>1 cycle</td>
+                                    <td>1/cycle</td>
+                                </tr>
+                                <tr>
+                                    <td><code>MOV</code></td>
+                                    <td>Load (Cached)</td>
+                                    <td>1 cycle</td>
+                                    <td>varies</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Code Section -->
+                <div id="section-code" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">Kernel Implementation</h1>
+                        <p class="section-desc">C patches ready for kernel/sched/loadavg.c integration.</p>
+                    </div>
+
+                    <div class="code-block">
+<pre><span class="tok-comment">/* existing kernel — loadavg.c (reference) */</span>
+<span class="tok-kw">static unsigned long</span> <span class="tok-fn">calc_load</span>(<span class="tok-kw">unsigned long</span> load, <span class="tok-kw">unsigned long</span> exp, <span class="tok-kw">unsigned long</span> active)
+{
+    <span class="tok-kw">unsigned long</span> newload;
+
+    newload = load * exp + active * (FIXED_1 - exp);
+    <span class="tok-kw">if</span> (active >= load)
+        newload += FIXED_1 - <span class="tok-num">1</span>;
+
+    <span class="tok-kw">return</span> newload / FIXED_1;
+}
+
+<span class="tok-comment">/* variant 1 — bit-shift patch */</span>
+<span class="tok-kw">#define</span> APPROX_SHIFT_K  4
+
+<span class="tok-kw">static unsigned long</span> <span class="tok-fn">calc_load_bitshift</span>(<span class="tok-kw">unsigned long</span> load, <span class="tok-kw">unsigned long</span> active)
+{
+    <span class="tok-kw">unsigned long</span> newload;
+    newload = (load - (load >> APPROX_SHIFT_K)) + (active >> APPROX_SHIFT_K);
+    <span class="tok-kw">return</span> <span class="tok-fn">max</span>(0UL, newload);
+}</pre>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+    <script src="js/app.js"></script>
+</body>
+</html>
