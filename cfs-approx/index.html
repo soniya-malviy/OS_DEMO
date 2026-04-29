@@ -245,29 +245,29 @@
                         </div>
                         <div class="formula-box approx-box">
                             <div class="formula-tag tag-bs">EEVDF: lag + eligibility</div>
-                            <div class="formula-eq">ve = lag + (vr - start) / eligibility</div>
-                            <div class="formula-note">eligibility = sqrt(sqrt(w)), 2× faster wakeups.</div>
+                            <div class="formula-eq">deadline = vruntime + slice</div>
+                            <div class="formula-note">lag = fairness error; eligibility = min(latency, period/√w).</div>
                         </div>
                     </div>
 
                     <div class="card">
                         <div class="card-title">EEVDF Core Algorithm</div>
-                        <pre class="code-snippet"><span class="tok-comment">/* linux/kernel/sched/deadline.c — EEVDF pick_next() */</span>
-<span class="tok-kw">static struct task_struct</span> <span class="tok-fn">pick_next_eevdf</span>(<span class="tok-kw">struct rq</span> *rq)
+                        <pre class="code-snippet"><span class="tok-comment">/* kernel/sched/fair.c — EEVDF pick_next_entity() */</span>
+<span class="tok-kw">static struct sched_entity</span> <span class="tok-fn">pick_next_entity</span>(<span class="tok-kw">struct cfs_rq</span> *cfs_rq)
 {
-    <span class="tok-kw">struct task_struct</span> *min = <span class="tok-num">NULL</span>;
-    <span class="tok-kw">u64</span> min_ve = <span class="tok-num">~0ULL</span>;
+    <span class="tok-kw">struct sched_entity</span> *se, *best = <span class="tok-num">NULL</span>;
 
-    <span class="tok-comment">/* Δ: eligibility = min(latency, period / sqrt(w)) */</span>
-    list_for_each_entry(tsk, <span class="tok-fn">rq->cfs_tasks</span>, se.run_list) {
-        <span class="tok-kw">u64</span> eligibility = <span class="tok-fn">calc_eligible</span>(tsk);
-        <span class="tok-kw">u64</span> ve = tsk->se.vrun + eligibility;
-        <span class="tok-kw">if</span> (ve < min_ve) {
-            min_ve = ve;
-            min = tsk;
-        }
+    <span class="tok-comment">/* lag = ideal service - actual service */</span>
+    <span class="tok-comment">/* eligible if lag >= 0 */</span>
+    list_for_each_entry(se, <span class="tok-fn">cfs_rq->tasks</span>, run_list) {
+        <span class="tok-kw">if</span> (se->lag < <span class="tok-num">0</span>)
+            <span class="tok-kw">continue</span>;  <span class="tok-comment">/* not eligible */</span>
+
+        <span class="tok-kw">u64</span> deadline = se->vruntime + se->slice;
+        <span class="tok-kw">if</span> (!best || deadline < best->deadline)
+            best = se;
     }
-    <span class="tok-kw">return</span> min;
+    <span class="tok-kw">return</span> best;
 }</pre>
                     </div>
 
