@@ -20,7 +20,9 @@
             <div class="header-badges">
                 <div class="badge badge-blue">O1 ε-BOUNDS</div>
                 <div class="badge badge-green">O2 3 VARIANTS</div>
-                <div class="badge badge-orange">Q11 FIXED-POINT</div>
+                <div class="badge badge-orange">O3 EEVDF</div>
+                <div class="badge badge-purple">Q11 FIXED-POINT</div>
+                <button class="theme-toggle" id="theme-toggle" title="Toggle Theme">◐</button>
             </div>
         </header>
 
@@ -56,6 +58,9 @@
                         </a>
                         <a href="#" class="nav-link" data-target="variants">
                             <span class="nav-dot" style="background: var(--green)"></span> 3 Variants
+                        </a>
+                        <a href="#" class="nav-link" data-target="eevdf">
+                            <span class="nav-dot" style="background: var(--purple)"></span> EEVDF
                         </a>
                         <a href="#" class="nav-link" data-target="bounds">
                             <span class="nav-dot" style="background: var(--purple)"></span> ε Bounds
@@ -221,6 +226,55 @@
                             <div class="formula-tag tag-poly">Horner Poly</div>
                             <div class="formula-note">O(d). Best for tunable precision. No systematic drift at high m.
                             </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- EEVDF Section -->
+                <div id="section-eevdf" class="section">
+                    <div class="section-header">
+                        <h1 class="section-title">EEVDF Scheduling (CFS+)</h1>
+                        <p class="section-desc">Earliest Eligible Virtual Deadline First merges latency and period concepts into a unified scheduling class replacing CFS.</p>
+                    </div>
+
+                    <div class="formula-compare">
+                        <div class="formula-box kernel-box">
+                            <div class="formula-tag tag-kernel">CFS: vtime</div>
+                            <div class="formula-eq">vtime += delta / weight</div>
+                            <div class="formula-note">fair_clock tracks virtual time per task.</div>
+                        </div>
+                        <div class="formula-box approx-box">
+                            <div class="formula-tag tag-bs">EEVDF: lag + eligibility</div>
+                            <div class="formula-eq">ve = lag + (vr - start) / eligibility</div>
+                            <div class="formula-note">eligibility = sqrt(sqrt(w)), 2× faster wakeups.</div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-title">EEVDF Core Algorithm</div>
+                        <pre class="code-snippet"><span class="tok-comment">/* linux/kernel/sched/deadline.c — EEVDF pick_next() */</span>
+<span class="tok-kw">static struct task_struct</span> <span class="tok-fn">pick_next_eevdf</span>(<span class="tok-kw">struct rq</span> *rq)
+{
+    <span class="tok-kw">struct task_struct</span> *min = <span class="tok-num">NULL</span>;
+    <span class="tok-kw">u64</span> min_ve = <span class="tok-num">~0ULL</span>;
+
+    <span class="tok-comment">/* Δ: eligibility = min(latency, period / sqrt(w)) */</span>
+    list_for_each_entry(tsk, <span class="tok-fn">rq->cfs_tasks</span>, se.run_list) {
+        <span class="tok-kw">u64</span> eligibility = <span class="tok-fn">calc_eligible</span>(tsk);
+        <span class="tok-kw">u64</span> ve = tsk->se.vrun + eligibility;
+        <span class="tok-kw">if</span> (ve < min_ve) {
+            min_ve = ve;
+            min = tsk;
+        }
+    }
+    <span class="tok-kw">return</span> min;
+}</pre>
+                    </div>
+
+                    <div class="chart-box">
+                        <div class="chart-box-title">Wakeup Latency: CFS vs EEVDF</div>
+                        <div class="chart-wrap" style="height: 250px;">
+                            <canvas id="chart-eevdf-latency"></canvas>
                         </div>
                     </div>
                 </div>
