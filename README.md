@@ -1,6 +1,6 @@
 # Approximate Computing for OS Kernel Internals / Approximate Computing in OS Process Scheduling: Designing and Evaluating Error-Bounded Priority Decay Functions for CPU Fair-Share Scheduling
 
-# REPORT [https://drive.google.com/file/d/16bJhK0Cwaa1ny4N1c16WatTz2cVOhVfo/view?usp=sharing]
+## REPORT https://drive.google.com/file/d/16bJhK0Cwaa1ny4N1c16WatTz2cVOhVfo/view?usp=sharing
 
 ## Research Overview
 
