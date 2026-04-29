@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,19 +8,21 @@
     <link rel="stylesheet" href="css/main.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
+
 <body>
     <div class="app-shell">
         <header>
             <div class="header-left">
                 <div class="logo-mark">Σ</div>
                 <div class="header-title">CFS APPROXIMATE COMPUTING</div>
-                <div class="header-sub">kernel/sched/loadavg.c — Phase 2</div>
+                <div class="header-sub">kernel/sched/loadavg.c </div>
             </div>
             <div class="header-badges">
                 <div class="badge badge-blue">O1 ε-BOUNDS</div>
                 <div class="badge badge-green">O2 3 VARIANTS</div>
                 <div class="badge badge-orange">O3 EEVDF</div>
                 <div class="badge badge-purple">Q11 FIXED-POINT</div>
+                <button class="theme-toggle" id="theme-toggle" title="Toggle Theme">◐</button>
             </div>
         </header>
 
@@ -117,7 +120,9 @@
                 <div id="section-overview" class="section visible">
                     <div class="section-header">
                         <h1 class="section-title">Approximate Computing in CFS</h1>
-                        <p class="section-desc">The Linux CFS scheduler calls calc_load() every 5 seconds to update system load averages. This research replaces the 3-cycle IMUL with 1-cycle approximations to reduce scheduler overhead on high-core-count servers.</p>
+                        <p class="section-desc">The Linux CFS scheduler calls calc_load() every 5 seconds to update
+                            system load averages. This research replaces the 3-cycle IMUL with 1-cycle approximations to
+                            reduce scheduler overhead on high-core-count servers.</p>
                     </div>
 
                     <div class="card">
@@ -151,10 +156,14 @@
                             <canvas id="chart-compare"></canvas>
                         </div>
                         <div class="legend-row">
-                            <div class="legend-item"><span class="legend-swatch" style="background: var(--blue)"></span> Kernel</div>
-                            <div class="legend-item"><span class="legend-swatch dashed" style="border-color: var(--orange)"></span> Bit-Shift</div>
-                            <div class="legend-item"><span class="legend-swatch dotted" style="border-color: var(--green)"></span> LUT</div>
-                            <div class="legend-item"><span class="legend-swatch dashed" style="border-color: var(--purple)"></span> Polynomial</div>
+                            <div class="legend-item"><span class="legend-swatch" style="background: var(--blue)"></span>
+                                Kernel</div>
+                            <div class="legend-item"><span class="legend-swatch dashed"
+                                    style="border-color: var(--orange)"></span> Bit-Shift</div>
+                            <div class="legend-item"><span class="legend-swatch dotted"
+                                    style="border-color: var(--green)"></span> LUT</div>
+                            <div class="legend-item"><span class="legend-swatch dashed"
+                                    style="border-color: var(--purple)"></span> Polynomial</div>
                         </div>
                     </div>
                 </div>
@@ -163,7 +172,8 @@
                 <div id="section-formulas" class="section">
                     <div class="section-header">
                         <h1 class="section-title">Mathematical Models</h1>
-                        <p class="section-desc">Comparison of the exact kernel formula against the proposed bit-shift approximation.</p>
+                        <p class="section-desc">Comparison of the exact kernel formula against the proposed bit-shift
+                            approximation.</p>
                     </div>
 
                     <div class="formula-compare">
@@ -199,7 +209,8 @@
                 <div id="section-variants" class="section">
                     <div class="section-header">
                         <h1 class="section-title">Three Approximation Strategies</h1>
-                        <p class="section-desc">Each variant offers a different trade-off between CPU cycles, memory, and error bounds.</p>
+                        <p class="section-desc">Each variant offers a different trade-off between CPU cycles, memory,
+                            and error bounds.</p>
                     </div>
 
                     <div class="chart-3col">
@@ -213,7 +224,8 @@
                         </div>
                         <div class="formula-box poly-box">
                             <div class="formula-tag tag-poly">Horner Poly</div>
-                            <div class="formula-note">O(d). Best for tunable precision. No systematic drift at high m.</div>
+                            <div class="formula-note">O(d). Best for tunable precision. No systematic drift at high m.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -277,7 +289,8 @@
                     <div class="card">
                         <div class="proof-panel">
                             <div class="proof-step step-derived">ε_∞ ≤ (|Δα|·M + δ) / (1−α)</div>
-                            <div class="proof-step step-bound">Derived from asymptotic telescoping sum convergence.</div>
+                            <div class="proof-step step-bound">Derived from asymptotic telescoping sum convergence.
+                            </div>
                         </div>
                     </div>
 
@@ -378,7 +391,7 @@
                     </div>
 
                     <div class="code-block">
-<pre><span class="tok-comment">/* existing kernel — loadavg.c (reference) */</span>
+                        <pre><span class="tok-comment">/* existing kernel — loadavg.c (reference) */</span>
 <span class="tok-kw">static unsigned long</span> <span class="tok-fn">calc_load</span>(<span class="tok-kw">unsigned long</span> load, <span class="tok-kw">unsigned long</span> exp, <span class="tok-kw">unsigned long</span> active)
 {
     <span class="tok-kw">unsigned long</span> newload;
@@ -406,4 +419,5 @@
     </div>
     <script src="js/app.js"></script>
 </body>
+
 </html>

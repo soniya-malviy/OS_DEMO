@@ -1,37 +1,38 @@
 const Approx = (() => {
   // ── Kernel constants (include/linux/sched/loadavg.h) ──
   const FIXED_1 = 1 << 11;   // 2048
-  const EXP_1   = 1884;      // e^(-1/12) fixed-point
-  const EXP_5   = 2014;      // e^(-1/60)
-  const EXP_15  = 2037;      // e^(-1/180)
- 
+  const EXP_1 = 1884;      // e^(-1/12) fixed-point
+  const EXP_5 = 2014;      // e^(-1/60)
+  const EXP_15 = 2037;      // e^(-1/180)
+
   // ── Exact kernel formula (kernel/sched/loadavg.c) ─────
   function kernelEWMA(load, active, exp_n) {
     let newload = load * exp_n + active * (FIXED_1 - exp_n);
     if (active >= load) newload += FIXED_1 - 1;
     return Math.floor(newload / FIXED_1);
   }
- 
+
   // ── Approximation Variant 1: Bit-shift ────────────────
   function approxBitShift(load, active, k) {
     return (load - (load >> k)) + (active >> k);
   }
- 
+
   // ── Approximation Variant 2: LUT ──────────────────────
   function buildLUT(exp_n, N) {
     const lut = new Float64Array(N + 1);
     for (let i = 0; i <= N; i++) {
-      const L = i;
+      // scale i back to fixed-point space before computing
+      const L = Math.round(i * FIXED_1 / N);
       lut[i] = Math.floor(L * exp_n / FIXED_1);
     }
     return lut;
   }
- 
   function approxLUT(load, active, exp_n, lut, N) {
-    const idx = Math.min(N, load);
+    // scale load (fixed-point) to table index (0..N)
+    const idx = Math.min(N, Math.round(load * N / FIXED_1));
     return lut[idx] + Math.floor(active * (FIXED_1 - exp_n) / FIXED_1);
   }
- 
+
   // ── Approximation Variant 3: Polynomial (Horner) ──────
   function approxPoly(load, active, exp_n, m) {
     const scale = 1 << m;
@@ -41,75 +42,78 @@ const Approx = (() => {
     const corr = Math.floor((c0 * active) >> m);
     return r + corr;
   }
- 
+
   // ── Formal ε bounds (O1) ──────────────────────────────
   function computeEpsBounds(k, N, m, alpha, M) {
-    const alphaHat_BS   = 1 - 1 / (1 << k);
+    const alphaHat_BS = 1 - 1 / (1 << k);
     const deltaAlpha_BS = Math.abs(alpha - alphaHat_BS);
-    const delta_BS      = 1 / (1 << m);
-    const eps_BS        = (deltaAlpha_BS * M + delta_BS) / (1 - alpha);
- 
-    const delta_LUT     = alpha * M / (2 * N);
-    const eps_LUT       = delta_LUT / (1 - alpha);
- 
-    const alphaHat_P    = Math.round(alpha * (1 << m)) / (1 << m);
-    const deltaAlpha_P  = Math.abs(alpha - alphaHat_P);
-    const delta_POLY    = 2 / (1 << m);
-    const eps_POLY      = (deltaAlpha_P * M + delta_POLY) / (1 - alpha);
- 
+    const delta_BS = 1 / (1 << m);
+    const eps_BS = (deltaAlpha_BS * M + delta_BS) / (1 - alpha);
+
+    const delta_LUT = alpha * M / (2 * N);
+    const eps_LUT = delta_LUT / (1 - alpha);
+
+    const alphaHat_P = Math.round(alpha * (1 << m)) / (1 << m);
+    const deltaAlpha_P = Math.abs(alpha - alphaHat_P);
+    const delta_POLY = 2 / (1 << m);
+    const eps_POLY = (deltaAlpha_P * M + delta_POLY) / (1 - alpha);
+
     return { eps_BS, eps_LUT, eps_POLY, alphaHat_BS, deltaAlpha_BS, delta_BS, delta_LUT, deltaAlpha_P, delta_POLY };
   }
- 
+
   // ── Main simulation ───────────────────────────────────
   function runSimulation(config) {
     const { T = 300, k = 4, lutN = 256, polyM = 15 } = config;
     const alpha = EXP_1 / FIXED_1;
- 
+
     const nr_active = new Int32Array(T);
     let rng = 42;
     const rand = (lo, hi) => {
       rng = ((rng * 1664525 + 1013904223) >>> 0);
       return lo + (rng >>> 0) % (hi - lo);
     };
-    for (let t = 0;   t < 100; t++) nr_active[t] = rand(800,  1200);
+    for (let t = 0; t < 100; t++) nr_active[t] = rand(800, 1200);
     for (let t = 100; t < 200; t++) nr_active[t] = rand(1400, 1800);
-    for (let t = 200; t < 300; t++) nr_active[t] = rand(400,  700);
- 
+    for (let t = 200; t < 300; t++) nr_active[t] = rand(400, 700);
+
     const lut = buildLUT(EXP_1, lutN);
- 
+
     const kernel = new Float64Array(T);
-    const bs     = new Float64Array(T);
+    const bs = new Float64Array(T);
     const lutArr = new Float64Array(T);
-    const poly   = new Float64Array(T);
- 
+    const poly = new Float64Array(T);
+
     let lk = nr_active[0], lbs = nr_active[0],
-        ll = nr_active[0], lp  = nr_active[0];
- 
+      ll = nr_active[0], lp = nr_active[0];
+
     for (let t = 0; t < T; t++) {
       const act = nr_active[t];
-      lk  = kernelEWMA(lk,  act, EXP_1);
+      lk = kernelEWMA(lk, act, EXP_1);
       lbs = Math.max(0, approxBitShift(lbs, act, k));
-      ll  = Math.max(0, approxLUT(ll,  act, EXP_1, lut, lutN));
-      lp  = Math.max(0, approxPoly(lp, act, EXP_1, polyM));
- 
-      kernel[t] = lk  / FIXED_1;
-      bs[t]     = lbs / FIXED_1;
-      lutArr[t] = ll  / FIXED_1;
-      poly[t]   = lp  / FIXED_1;
+      ll = Math.max(0, approxLUT(ll, act, EXP_1, lut, lutN));
+      lp = Math.max(0, approxPoly(lp, act, EXP_1, polyM));
+
+      kernel[t] = lk / FIXED_1;
+      bs[t] = lbs / FIXED_1;
+      lutArr[t] = ll / FIXED_1;
+      poly[t] = lp / FIXED_1;
     }
- 
-    const errBS   = kernel.map((v,i) => Math.abs(v - bs[i]));
-    const errLUT  = kernel.map((v,i) => Math.abs(v - lutArr[i]));
-    const errPoly = kernel.map((v,i) => Math.abs(v - poly[i]));
-    const errPctBS   = errBS.map((e,i)   => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
-    const errPctLUT  = errLUT.map((e,i)  => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
-    const errPctPoly = errPoly.map((e,i) => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
- 
-    const avg = a => a.reduce((s,v) => s+v, 0) / a.length;
+
+    const errBS = kernel.map((v, i) => Math.abs(v - bs[i]));
+    const errLUT = kernel.map((v, i) => Math.abs(v - lutArr[i]));
+    const errPoly = kernel.map((v, i) => Math.abs(v - poly[i]));
+    const errPctBS = errBS.map((e, i) => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
+    const errPctLUT = errLUT.map((e, i) => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
+    const errPctPoly = errPoly.map((e, i) => kernel[i] > 0 ? e / kernel[i] * 100 : 0);
+
+    const avg = a => a.reduce((s, v) => s + v, 0) / a.length;
     const max = a => Math.max(...a);
- 
-    const eps = computeEpsBounds(k, lutN, polyM, alpha, max(kernel));
- 
+
+    let maxLoadFP = 0;
+    for (let t = 0; t < T; t++) {
+      if (lk > maxLoadFP) maxLoadFP = lk;  // lk is fixed-point
+    }
+    const eps = computeEpsBounds(k, lutN, polyM, alpha, maxLoadFP / FIXED_1);
     return {
       T, nr_active: Array.from(nr_active).map(v => v / FIXED_1),
       kernel: Array.from(kernel),
@@ -123,28 +127,28 @@ const Approx = (() => {
       errPctLUT: Array.from(errPctLUT),
       errPctPoly: Array.from(errPctPoly),
       stats: {
-        avgErrBS:   avg(errPctBS).toFixed(3),
-        avgErrLUT:  avg(errPctLUT).toFixed(3),
+        avgErrBS: avg(errPctBS).toFixed(3),
+        avgErrLUT: avg(errPctLUT).toFixed(3),
         avgErrPoly: avg(errPctPoly).toFixed(3),
-        maxErrBS:   max(errPctBS).toFixed(3),
-        maxErrLUT:  max(errPctLUT).toFixed(3),
+        maxErrBS: max(errPctBS).toFixed(3),
+        maxErrLUT: max(errPctLUT).toFixed(3),
         maxErrPoly: max(errPctPoly).toFixed(3),
-        epsilonBS:  max(errBS).toFixed(5),
+        epsilonBS: max(errBS).toFixed(5),
         epsilonLUT: max(errLUT).toFixed(5),
-        epsilonPoly:max(errPoly).toFixed(5),
+        epsilonPoly: max(errPoly).toFixed(5),
       },
       bounds: eps,
       alpha,
       FIXED_1, EXP_1, k, lutN, polyM
     };
   }
- 
+
   return { runSimulation, kernelEWMA, approxBitShift, FIXED_1, EXP_1 };
 })();
 
 const EEVDF = (() => {
   const LATENCY = 4e6;    // 4ms target latency (ns)
-  const PERIOD  = 1e8;     // 100ms period
+  const PERIOD = 1e8;     // 100ms period
 
   function calcEligibility(weight, load) {
     const lat = LATENCY / 1000;
@@ -189,11 +193,11 @@ const EEVDF = (() => {
     const tasks = [];
     for (let i = 0; i < N; i++) tasks.push(new Task());
 
-    const cfsQueue = [...tasks].sort((a,b) => a.weight - b.weight);
-    const eevdfQueue = tasks.map(t => ({...t, lag: 0, start: 0, eligible: false}));
+    const cfsQueue = [...tasks].sort((a, b) => a.weight - b.weight);
+    const eevdfQueue = tasks.map(t => ({ ...t, lag: 0, start: 0, eligible: false }));
 
     for (now = 0; now < T; now++) {
-      if (Math.random() < 0.1) { const t = new Task(); eevdfQueue.push({...t, lag: 0, start: now, eligible: true}); cfsQueue.push(t); }
+      if (Math.random() < 0.1) { const t = new Task(); eevdfQueue.push({ ...t, lag: 0, start: now, eligible: true }); cfsQueue.push(t); }
 
 let waitCFS = 0, waitEEVDF = 0;
       if (cfsQueue.length > 0) {
@@ -216,7 +220,7 @@ let waitCFS = 0, waitEEVDF = 0;
       if (eevdfQueue.length > 0) {
         const eligible = eevdfQueue.filter(t => t.eligible && t.start <= now);
         if (eligible.length > 0) {
-          const t = eligible.sort((a,b) => (a.lag + (now-a.start)/a.eligibility) - (b.lag + (now-b.start)/b.eligibility))[0];
+          const t = eligible.sort((a, b) => (a.lag + (now - a.start) / a.eligibility) - (b.lag + (now - b.start) / b.eligibility))[0];
           waitEEVDF = now - t.start;
           t.start = now + t.burst;
           t.lag += now - t.start + t.burst;
@@ -233,14 +237,14 @@ let waitCFS = 0, waitEEVDF = 0;
       T,
       cfsLatency,
       eevdfLatency,
-      avgCFS: cfsWait.reduce((s,v)=>s+v,0)/T,
-      avgEEVDF: eevdfWait.reduce((s,v)=>s+v,0)/T,
+      avgCFS: cfsWait.reduce((s, v) => s + v, 0) / T,
+      avgEEVDF: eevdfWait.reduce((s, v) => s + v, 0) / T,
     };
   }
 
   return { runEEVDFSimulation };
 })();
- 
+
 const Charts = (() => {
   const PALETTE = {
     kernel : '#3B82F6',
@@ -253,8 +257,36 @@ const Charts = (() => {
     err    : '#EF4444',
     bound  : '#7C3AED',
     grid   : 'rgba(0,0,0,0.08)',
+  let PALETTE = {
+    kernel: '#2563EB',
+    bs: '#EA580C',
+    lut: '#059669',
+    poly: '#7C3AED',
+    eevdf: '#6D28D9',
+    cfs: '#475569',
+    active: '#64748B',
+    err: '#DC2626',
+    bound: '#4338CA',
+    grid: 'rgba(148,163,184,0.1)',
   };
- 
+
+  const THEMES = {
+    light: {
+      kernel: '#2563EB', bs: '#EA580C', lut: '#059669', poly: '#7C3AED',
+      eevdf: '#6D28D9', cfs: '#475569', active: '#64748B', err: '#DC2626',
+      bound: '#4338CA', grid: 'rgba(148,163,184,0.1)', text: '#475569'
+    },
+    dark: {
+      kernel: '#3B82F6', bs: '#F97316', lut: '#10B981', poly: '#A855F7',
+      eevdf: '#8B5CF6', cfs: '#6B7280', active: '#94A3B8', err: '#EF4444',
+      bound: '#7C3AED', grid: 'rgba(148,163,184,0.15)', text: '#94A3B8'
+    }
+  };
+
+  function updatePalette(theme) {
+    PALETTE = { ...THEMES[theme] };
+  }
+
   const baseOpts = (yLabel) => ({
     responsive: true,
     maintainAspectRatio: false,
@@ -263,6 +295,7 @@ const Charts = (() => {
     scales: {
       x: {
         ticks: { maxTicksLimit: 8, font: { size: 10, family: 'JetBrains Mono, monospace' }, color: '#6B7280' },
+        ticks: { maxTicksLimit: 8, font: { size: 10, family: 'JetBrains Mono, monospace' }, color: PALETTE.text },
         grid: { color: PALETTE.grid },
         border: { color: 'transparent' }
       },
@@ -272,23 +305,30 @@ const Charts = (() => {
         grid: { color: PALETTE.grid },
         border: { color: 'transparent' },
         title: { display: !!yLabel, text: yLabel, color: '#6B7280', font: { size: 10 } }
+        ticks: {
+          font: { size: 10, family: 'JetBrains Mono, monospace' }, color: PALETTE.text,
+          callback: v => v.toFixed(2)
+        },
+        grid: { color: PALETTE.grid },
+        border: { color: 'transparent' },
+        title: { display: !!yLabel, text: yLabel, color: PALETTE.text, font: { size: 10 } }
       }
     }
   });
- 
+
   let instances = {};
- 
+
   function destroy(id) {
     if (instances[id]) { instances[id].destroy(); delete instances[id]; }
   }
- 
+
   function buildComparisonChart(data) {
     destroy('chart-compare');
     const el = document.getElementById('chart-compare');
     if (!el) return;
     const ctx = el.getContext('2d');
     const labels = Array.from({ length: data.T }, (_, i) => i);
- 
+
     instances['chart-compare'] = new Chart(ctx, {
       type: 'line',
       data: {
@@ -307,9 +347,11 @@ const Charts = (() => {
           tooltip: {
             mode: 'index',
             intersect: false,
-            backgroundColor: '#0F172A',
-            borderColor: '#1E293B',
+            backgroundColor: document.body.classList.contains('dark-mode') ? '#0C1420' : '#FFFFFF',
+            borderColor: document.body.classList.contains('dark-mode') ? '#111C2C' : '#E2E8F0',
             borderWidth: 1,
+            titleColor: document.body.classList.contains('dark-mode') ? '#E2EAF4' : '#0F172A',
+            bodyColor: document.body.classList.contains('dark-mode') ? '#64748B' : '#475569',
             titleFont: { family: 'JetBrains Mono, monospace', size: 11 },
             bodyFont: { family: 'JetBrains Mono, monospace', size: 10 },
             callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.parsed.y.toFixed(4)}` }
@@ -318,14 +360,14 @@ const Charts = (() => {
       }
     });
   }
- 
+
   function buildErrorChart(data) {
     destroy('chart-error');
     const el = document.getElementById('chart-error');
     if (!el) return;
     const ctx = el.getContext('2d');
     const labels = Array.from({ length: data.T }, (_, i) => i);
- 
+
     instances['chart-error'] = new Chart(ctx, {
       type: 'line',
       data: {
@@ -339,14 +381,14 @@ const Charts = (() => {
       options: baseOpts('absolute error')
     });
   }
- 
+
   function buildPctChart(data) {
     destroy('chart-pct');
     const el = document.getElementById('chart-pct');
     if (!el) return;
     const ctx = el.getContext('2d');
     const labels = Array.from({ length: data.T }, (_, i) => i);
- 
+
     instances['chart-pct'] = new Chart(ctx, {
       type: 'line',
       data: {
@@ -363,13 +405,13 @@ const Charts = (() => {
       }
     });
   }
- 
+
   function buildCyclesChart() {
     destroy('chart-cycles');
     const el = document.getElementById('chart-cycles');
     if (!el) return;
     const ctx = el.getContext('2d');
- 
+
     instances['chart-cycles'] = new Chart(ctx, {
       type: 'bar',
       data: {
@@ -387,27 +429,27 @@ const Charts = (() => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280' }, grid: { display: false } },
-          y: { min: 0, max: 4, ticks: { stepSize: 1, font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280', callback: v => v + ' cyc' }, grid: { color: PALETTE.grid } }
+          x: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text }, grid: { display: false } },
+          y: { min: 0, max: 4, ticks: { stepSize: 1, font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text, callback: v => v + ' cyc' }, grid: { color: PALETTE.grid } }
         }
       }
     });
   }
- 
+
   function buildEpsChart(data) {
     destroy('chart-eps');
     const el = document.getElementById('chart-eps');
     if (!el) return;
     const ctx = el.getContext('2d');
     const b = data.bounds;
- 
+
     instances['chart-eps'] = new Chart(ctx, {
       type: 'bar',
       data: {
         labels: ['Bit-shift', 'LUT', 'Poly'],
         datasets: [
           { label: 'ε_∞ bound', data: [b.eps_BS, b.eps_LUT, b.eps_POLY], backgroundColor: [PALETTE.bs + 'AA', PALETTE.lut + 'AA', PALETTE.poly + 'AA'], borderColor: [PALETTE.bs, PALETTE.lut, PALETTE.poly], borderWidth: 1, borderRadius: 4 },
-          { label: 'Observed', data: [parseFloat(data.stats.epsilonBS), parseFloat(data.stats.epsilonLUT), parseFloat(data.stats.epsilonPoly)], backgroundColor: ['#F9731622', '#10B98122', '#A855F722'], borderColor: [PALETTE.bs, PALETTE.lut, PALETTE.poly], borderWidth: 1, borderRadius: 4, borderDash: [4,2] }
+          { label: 'Observed', data: [parseFloat(data.stats.epsilonBS), parseFloat(data.stats.epsilonLUT), parseFloat(data.stats.epsilonPoly)], backgroundColor: ['#F9731622', '#10B98122', '#A855F722'], borderColor: [PALETTE.bs, PALETTE.lut, PALETTE.poly], borderWidth: 1, borderRadius: 4, borderDash: [4, 2] }
         ]
       },
       options: {
@@ -415,11 +457,11 @@ const Charts = (() => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280' }, grid: { display: false } },
-          y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280', callback: v => v.toFixed(3) }, grid: { color: PALETTE.grid } }
+          x: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text }, grid: { display: false } },
+          y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text, callback: v => v.toFixed(3) }, grid: { color: PALETTE.grid } }
         }
       }
-});
+    });
   }
 
   function buildEEVDFChart(data) {
@@ -443,8 +485,8 @@ const Charts = (() => {
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          x: { ticks: { maxTicksLimit: 8, font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280' }, grid: { color: PALETTE.grid }, border: { color: 'transparent' } },
-          y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: '#6B7280' }, grid: { color: PALETTE.grid }, border: { color: 'transparent' }, title: { display: true, text: 'wait time', color: '#6B7280' } }
+          x: { ticks: { maxTicksLimit: 8, font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text }, grid: { color: PALETTE.grid }, border: { color: 'transparent' } },
+          y: { ticks: { font: { size: 10, family: 'JetBrains Mono' }, color: PALETTE.text }, grid: { color: PALETTE.grid }, border: { color: 'transparent' }, title: { display: true, text: 'wait time', color: PALETTE.text } }
         }
       }
     });
@@ -459,23 +501,23 @@ const Charts = (() => {
     if (eevdfData) buildEEVDFChart(eevdfData);
   }
 
-  return { buildAll, PALETTE };
+  return { buildAll, updatePalette, PALETTE };
 })();
 
 // App Controller
 document.addEventListener('DOMContentLoaded', () => {
   const config = { T: 300, k: 4, lutN: 256, polyM: 15 };
-  
+
   function updateUI() {
     const data = Approx.runSimulation(config);
     const eevdfData = EEVDF.runEEVDFSimulation();
     Charts.buildAll(data, eevdfData);
-    
+
     // Update live stats
     document.getElementById('stat-avg-bs').textContent = data.stats.avgErrBS + '%';
     document.getElementById('stat-avg-lut').textContent = data.stats.avgErrLUT + '%';
     document.getElementById('stat-avg-poly').textContent = data.stats.avgErrPoly + '%';
-    
+
     document.getElementById('bound-bs').textContent = data.bounds.eps_BS.toFixed(4);
     document.getElementById('bound-lut').textContent = data.bounds.eps_LUT.toFixed(4);
     document.getElementById('bound-poly').textContent = data.bounds.eps_POLY.toFixed(4);
@@ -506,14 +548,27 @@ document.addEventListener('DOMContentLoaded', () => {
     link.addEventListener('click', (e) => {
       e.preventDefault();
       const target = link.getAttribute('data-target');
-      
+
       navLinks.forEach(l => l.classList.remove('active'));
       link.classList.add('active');
-      
+
       document.querySelectorAll('.section').forEach(s => s.classList.remove('visible'));
       document.getElementById('section-' + target).classList.add('visible');
     });
   });
+
+  // Theme Toggle Logic
+  const themeToggle = document.getElementById('theme-toggle');
+  if (themeToggle) {
+    themeToggle.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+      const isDark = document.body.classList.contains('dark-mode');
+      themeToggle.textContent = isDark ? '☀' : '◐';
+      
+      Charts.updatePalette(isDark ? 'dark' : 'light');
+      updateUI(); // Re-run simulation and rebuild charts
+    });
+  }
 
   updateUI();
 });
