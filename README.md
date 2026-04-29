@@ -2,7 +2,7 @@
 
 A high-performance interactive dashboard for visualizing and analyzing approximate computing techniques for the Linux Completely Fair Scheduler (CFS).
 
-![Project Dashboard Mockup](https://images.unsplash.com/photo-1551288049-bbbda5366391?auto=format&fit=crop&q=80&w=1200)
+![Project Dashboard Mockup]([https://images.unsplash.com/photo-1551288049-bbbda5366391?auto=format&fit=crop&q=80&w=1200](https://soniya-malviy.github.io/OS_DEMO/cfs-approx/))
 
 ## Research Overview
 
