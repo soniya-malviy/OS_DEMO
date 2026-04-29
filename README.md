@@ -1,8 +1,6 @@
 # Approximate Computing for OS Kernel Internals / Approximate Computing in OS Process Scheduling: Designing and Evaluating Error-Bounded Priority Decay Functions for CPU Fair-Share Scheduling
 
-A high-performance interactive dashboard for visualizing and analyzing approximate computing techniques for the Linux Completely Fair Scheduler (CFS).
-
-![Project Dashboard Mockup]([https://images.unsplash.com/photo-1551288049-bbbda5366391?auto=format&fit=crop&q=80&w=1200](https://soniya-malviy.github.io/OS_DEMO/cfs-approx/))
+# REPORT [https://drive.google.com/file/d/16bJhK0Cwaa1ny4N1c16WatTz2cVOhVfo/view?usp=sharing]
 
 ## Research Overview
 
