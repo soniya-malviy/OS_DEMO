@@ -1,7 +1,9 @@
 #  Approximate Computing in OS Process Scheduling
 
 > **Designing and Evaluating Error-Bounded Priority Decay Functions for CPU Fair-Share Scheduling**
-> REPORT : https://drive.google.com/file/d/1coYJ74MkjJVk30GJeGSGxddP47pQ7F2Z/view?usp=sharing
+
+
+REPORT : https://drive.google.com/file/d/1coYJ74MkjJVk30GJeGSGxddP47pQ7F2Z/view?usp=sharing
 
 ---
 
@@ -21,7 +23,7 @@ We rigorously derive and prove worst-case infinity-norm error bounds (`ε_∞ pr
 ### 2.  Empirical Error Characterization and Fairness Validation
 Through C-level and Python simulation over 300–500 scheduler ticks across three distinct load phases (moderate → high spike → low), we measure average error (%), max error (%), observed ε, and Jain's Fairness Index for all three methods. The **LUT approach** consistently delivers the best observed error in practice (`avg ≈ 0.74–0.76%`, `ε_obs ≈ 0.008–0.010`), outperforming the polynomial despite the polynomial's tighter formal bound. The Bit-Shift variant reduces per-operation CPU cycles from **3 (IMUL) to 1 (SAR)** — a 67% reduction — while all three variants maintain Jain's Fairness Index `J ≥ 0.90` across all load regimes, formally validating scheduler correctness and the absence of task starvation.
 
-### 3. ⚖️ EEVDF vs. CFS Scheduling Latency Analysis
+### 3.  EEVDF vs. CFS Scheduling Latency Analysis
 We simulate and compare average task wait times between the legacy **CFS** (Completely Fair Scheduler) and the modern **EEVDF** (Earliest Eligible Virtual Deadline First) scheduler introduced in Linux 6.6. Results show CFS achieving zero average wait time (`0.0000`) under our workload model vs. EEVDF's `0.1500`, providing insight into the latency tradeoffs of deadline-aware scheduling versus pure fairness-based vruntime accounting. This analysis reveals that EEVDF's deadline-admission mechanism introduces measurable overhead in throughput-heavy scenarios, with direct implications for real-time and interactive workload tuning on modern Linux kernels.
 
 ---
