@@ -1,11 +1,11 @@
-# ⚙️ Approximate Computing in OS Process Scheduling
+#  Approximate Computing in OS Process Scheduling
 
-> **Designing and Evaluating Error-Bounded Priority Decay Functions for CPU Fair-Share Scheduling**  
-> Soniya Malviya · Aryan Soni · Kalash Thakur
+> **Designing and Evaluating Error-Bounded Priority Decay Functions for CPU Fair-Share Scheduling**
+> REPORT : https://drive.google.com/file/d/1coYJ74MkjJVk30GJeGSGxddP47pQ7F2Z/view?usp=sharing
 
 ---
 
-## 📌 Research Overview
+##  Research Overview
 
 Modern OS kernels perform millions of arithmetic operations per second inside the process scheduler — EWMA-based load estimation, vruntime updates in CFS, and priority decay functions — all implemented with full 64-bit precision despite not requiring mathematical exactness.
 
@@ -13,12 +13,12 @@ This project presents the design, implementation, and simulation-based validatio
 
 ---
 
-## 🔬 3 Core Research Contributions
+##  3 Core Research Contributions
 
-### 1. 📐 Formal ε-Bound Derivation for Fixed-Point Exponential Decay
+### 1.  Formal ε-Bound Derivation for Fixed-Point Exponential Decay
 We rigorously derive and prove worst-case infinity-norm error bounds (`ε_∞ proven`) for all three approximation strategies — Bit-Shift, LUT, and Polynomial — under varying parameter regimes (`T ∈ {300, 500}`, `lutN ∈ {256, 512}`, `polyM ∈ {15, 20}`). Using perturbation analysis and geometric series convergence (`ε_bound = (Δα·M + δ) / (1 − α)`), we show that the **Polynomial (Horner) method** achieves the tightest proven bound (`ε_∞ = 0.00002` at T=500, m=20), while the **Bit-Shift** method carries the largest theoretical error (`ε_∞ ≈ 0.174`) due to the inherent `|Δα| = 0.01758` from rounding the decay factor to a power-of-two representation. Critically, observed errors are strictly less than all theoretical bounds in every configuration, confirming the bounds are valid and conservative.
 
-### 2. 📊 Empirical Error Characterization and Fairness Validation
+### 2.  Empirical Error Characterization and Fairness Validation
 Through C-level and Python simulation over 300–500 scheduler ticks across three distinct load phases (moderate → high spike → low), we measure average error (%), max error (%), observed ε, and Jain's Fairness Index for all three methods. The **LUT approach** consistently delivers the best observed error in practice (`avg ≈ 0.74–0.76%`, `ε_obs ≈ 0.008–0.010`), outperforming the polynomial despite the polynomial's tighter formal bound. The Bit-Shift variant reduces per-operation CPU cycles from **3 (IMUL) to 1 (SAR)** — a 67% reduction — while all three variants maintain Jain's Fairness Index `J ≥ 0.90` across all load regimes, formally validating scheduler correctness and the absence of task starvation.
 
 ### 3. ⚖️ EEVDF vs. CFS Scheduling Latency Analysis
@@ -26,7 +26,7 @@ We simulate and compare average task wait times between the legacy **CFS** (Comp
 
 ---
 
-## 📊 Simulation Results
+##  Simulation Results
 
 ### Approximation Error Summary
 
@@ -75,7 +75,7 @@ We simulate and compare average task wait times between the legacy **CFS** (Comp
 
 ---
 
-## 🧮 Target Function
+##  Target Function
 
 The exact kernel function from `kernel/sched/loadavg.c`:
 
@@ -158,7 +158,7 @@ newload = (c₁ · load + c₀ · active) >> m
 
 ---
 
-## 🧪 Experimental Setup
+##  Experimental Setup
 
 | Parameter | Value |
 |---|---|
@@ -236,7 +236,7 @@ All variants preserve **O(1) time complexity**. The LUT requires O(N) space (2 K
 
 ---
 
-## ⚠️ Limitations
+##  Limitations
 
 - **Simulation vs. live kernel** — Results are from Python/C simulation; the live kernel involves per-CPU lock-free accumulation, `NO_HZ` idle compensation, and interrupt-driven sampling not modelled here.
 - **LUT memory locality** — An L1 cache miss on the LUT table costs 4–12 cycles, potentially exceeding the 3-cycle IMUL it replaces. With N=256, the 2 KB table fits in L1D, but this must be verified with hardware performance counters.
@@ -244,7 +244,7 @@ All variants preserve **O(1) time complexity**. The LUT requires O(N) space (2 K
 
 ---
 
-## 🔮 Future Work
+##  Future Work
 
 - Implement bit-shift and polynomial variants as a **Linux 6.6 kernel patch** targeting `kernel/sched/loadavg.c` with a runtime `sysctl` toggle
 - Benchmark in a **QEMU/KVM virtual machine** using `stress-ng --cpu 8` and `perf stat` to measure actual IPC improvement
@@ -252,16 +252,6 @@ All variants preserve **O(1) time complexity**. The LUT requires O(N) space (2 K
 - Implement **adaptive precision controller**: a feedback loop monitoring Jain's J via `/proc/schedstat` and switching approximation level dynamically
 - Port benchmarks to **ARM64** (Raspberry Pi 5) to verify architecture-specific cycle gains
 - Submit formal verification artifact in **Coq** proving the geometric series error bound for the bit-shift variant
-
----
-
-## 👥 Authors
-
-| Name | Contribution |
-|---|---|
-| **Soniya Malviya** | Algorithm design, formal ε-bound derivation |
-| **Aryan Soni** | Simulation implementation, results analysis |
-| **Kalash Thakur** | EEVDF scheduling analysis, report writing |
 
 ---
 
@@ -280,6 +270,6 @@ All variants preserve **O(1) time complexity**. The LUT requires O(N) space (2 K
 
 ---
 
-## 📄 License
+##  License
 
 This research project is submitted for academic evaluation. Code and simulation scripts are available for educational use.
