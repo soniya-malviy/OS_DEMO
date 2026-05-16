@@ -177,7 +177,7 @@ newload = (c₁ · load + c₀ · active) >> m
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 cfs-approx/
@@ -201,7 +201,7 @@ cfs-approx/
 
 ---
 
-## 🚀 Running the Simulation
+##  Running the Simulation
 
 ```bash
 # Clone the repository
@@ -225,7 +225,7 @@ python sim/eevdf_sim.py
 
 ---
 
-## 📐 Complexity Analysis
+##  Complexity Analysis
 
 | Variant | Time | Space | Cycles | Savings |
 |---|---|---|---|---|
@@ -257,7 +257,7 @@ All variants preserve **O(1) time complexity**. The LUT requires O(N) space (2 K
 
 ---
 
-## 📚 References
+##  References
 
 1. J. Lelli et al., "Worst-Case Response Time Analysis for the Linux Completely Fair Scheduler," *ACM Trans. Comput. Syst.*, 2025.
 2. X. Zhou et al., "Scheduling Real-Time Deep Learning Services as Imprecise Computations," *IEEE RTAS*, 2020.
